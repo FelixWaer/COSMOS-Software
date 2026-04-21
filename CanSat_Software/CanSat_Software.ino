@@ -1,79 +1,68 @@
 #include <Cansat_RFM96.h>
-
-Cansat_RFM96 rfm96(433500, false); 
-
-//=============================================================================
-// Simple USBHost USBSerial test
-// This sketch is very much like the main teensy example: USBtoSerial.ino
-// but instead of going to hardware serial port it forwards the data
-// between the USB Serial and a USB Serial device connected to the USB Host
-// port.
-//
-// This example is in the public domain
-//=============================================================================
-
 #include <USBHost_t36.h>
 
-//=============================================================================
-// Options
-//=============================================================================
-// uncomment the line below to output debug information
-//#define DEBUG_OUTPUT
-
-// Uncomment the line below to print out information about the USB devices that attach.
 #define PRINT_DEVICE_INFO
 #define USBBAUD 1000000 //115200
-
-uint32_t baud = USBBAUD;
-uint32_t format = USBHOST_SERIAL_8N1;
-USBHost myusb;
 
 //=============================================================================
 // USB Objects
 //=============================================================================
-
-// Optional if you use are possibly going to plug your USB Serial device
-// into a USB Hub, you should include one or more USB Hub objects. 
-// How many? depends as some HUB chips support lets say 4 ports, so if the HUB
-// actuall has more than this, than internally it may be made up using multiple
-// HUBs and you may need one of the hub objects for each one of these.
+uint32_t baud = USBBAUD;
+uint32_t format = USBHOST_SERIAL_8N1;
+USBHost myusb;
 USBHub hub1(myusb);
-//USBHub hub2(myusb);
-//USBHub hub3(myusb);
+USBSerial_BigBuffer userial(myusb, 1);
 
-// There is now two versions of the USBSerial class, that are both derived from a common Base class
-// The difference is on how large of transfers that it can handle.  This is controlled by
-// the device descriptor, where up to now we handled those up to 64 byte USB transfers.
-// But there are now new devices that support larger transfer like 512 bytes.  This for example
-// includes the Teensy 4.x boards.  For these we need the big buffer version. 
-// uncomment one of the following defines for userial
-//USBSerial userial(myusb);  // works only for those Serial devices who transfer <=64 bytes (like T3.x, FTDI...)
-USBSerial_BigBuffer userial(myusb, 1); // Handles anything up to 512 bytes
-//USBSerial_BigBuffer userial(myusb); // Handles up to 512 but by default only for those > 64 bytesUSBHost myusb;
-// We also now have an optional set of parameters for the constructor that allows you to pass in a Vendor ID,
-// product ID, what it maps to and the like, to handle USB objects which have underlying USB to serial converters, 
-// that are known, but not in our list. 
-//USBSerial_BigBuffer userial(myusb, 1, 0x10c4, 0xea60, USBSerialBase::CP210X, 0); // Handles anything up to 512 bytes
-//
-// Although not the Serial class, this sketch can also handle forwarding of the Teensy Serial Emulation object (SEREMU)
-// may need multpile HID Parser objects depending on what other USB types the object supports.
-//#define USERIAL_IS_SEREMU   // SEREMU is not a top level device, so we need to update device tables for this
+char buffer[512];
+
 #ifdef USERIAL_IS_SEREMU
 USBHIDParser hid1(myusb);
 USBHIDParser hid2(myusb);
 USBSerialEmu userial(myusb);
 #endif
 
-
-// Define the buffer to use to copy between the two devices
-// I am using 512 bytes as that is the largest one that can happen between two T4.x
-// if other type devices could easily reduce to something like 64 bytes
-char buffer[512];
-uint32_t led_on_time=0;
-
 //=============================================================================
-// optional debug stuff
+// Other Objects
 //=============================================================================
+Cansat_RFM96 rfm96(433500, false); 
+
+uint8_t txArray[100];
+
+static const uint8_t CRC_TABLE[256] = {
+  0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15,
+  0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D,
+  0x70, 0x77, 0x7E, 0x79, 0x6C, 0x6B, 0x62, 0x65,
+  0x48, 0x4F, 0x46, 0x41, 0x54, 0x53, 0x5A, 0x5D,
+  0xE0, 0xE7, 0xEE, 0xE9, 0xFC, 0xFB, 0xF2, 0xF5,
+  0xD8, 0xDF, 0xD6, 0xD1, 0xC4, 0xC3, 0xCA, 0xCD,
+  0x90, 0x97, 0x9E, 0x99, 0x8C, 0x8B, 0x82, 0x85,
+  0xA8, 0xAF, 0xA6, 0xA1, 0xB4, 0xB3, 0xBA, 0xBD,
+  0xC7, 0xC0, 0xC9, 0xCE, 0xDB, 0xDC, 0xD5, 0xD2,
+  0xFF, 0xF8, 0xF1, 0xF6, 0xE3, 0xE4, 0xED, 0xEA,
+  0xB7, 0xB0, 0xB9, 0xBE, 0xAB, 0xAC, 0xA5, 0xA2,
+  0x8F, 0x88, 0x81, 0x86, 0x93, 0x94, 0x9D, 0x9A,
+  0x27, 0x20, 0x29, 0x2E, 0x3B, 0x3C, 0x35, 0x32,
+  0x1F, 0x18, 0x11, 0x16, 0x03, 0x04, 0x0D, 0x0A,
+  0x57, 0x50, 0x59, 0x5E, 0x4B, 0x4C, 0x45, 0x42,
+  0x6F, 0x68, 0x61, 0x66, 0x73, 0x74, 0x7D, 0x7A,
+  0x89, 0x8E, 0x87, 0x80, 0x95, 0x92, 0x9B, 0x9C,
+  0xB1, 0xB6, 0xBF, 0xB8, 0xAD, 0xAA, 0xA3, 0xA4,
+  0xF9, 0xFE, 0xF7, 0xF0, 0xE5, 0xE2, 0xEB, 0xEC,
+  0xC1, 0xC6, 0xCF, 0xC8, 0xDD, 0xDA, 0xD3, 0xD4,
+  0x69, 0x6E, 0x67, 0x60, 0x75, 0x72, 0x7B, 0x7C,
+  0x51, 0x56, 0x5F, 0x58, 0x4D, 0x4A, 0x43, 0x44,
+  0x19, 0x1E, 0x17, 0x10, 0x05, 0x02, 0x0B, 0x0C,
+  0x21, 0x26, 0x2F, 0x28, 0x3D, 0x3A, 0x33, 0x34,
+  0x4E, 0x49, 0x40, 0x47, 0x52, 0x55, 0x5C, 0x5B,
+  0x76, 0x71, 0x78, 0x7F, 0x6A, 0x6D, 0x64, 0x63,
+  0x3E, 0x39, 0x30, 0x37, 0x22, 0x25, 0x2C, 0x2B,
+  0x06, 0x01, 0x08, 0x0F, 0x1A, 0x1D, 0x14, 0x13,
+  0xAE, 0xA9, 0xA0, 0xA7, 0xB2, 0xB5, 0xBC, 0xBB,
+  0x96, 0x91, 0x98, 0x9F, 0x8A, 0x8D, 0x84, 0x83,
+  0xDE, 0xD9, 0xD0, 0xD7, 0xC2, 0xC5, 0xCC, 0xCB,
+  0xE6, 0xE1, 0xE8, 0xEF, 0xFA, 0xFD, 0xF4, 0xF3
+};
+
 #ifdef DEBUG_OUTPUT
 #define DBGPrintf Serial.printf
 #else
@@ -82,47 +71,14 @@ inline void DBGPrintf(...) {
 }
 #endif
 
-// This sketch can optionally print out when some of these devices are inserted and removed. 
-#ifdef PRINT_DEVICE_INFO
-// If you add devices you may want to extend these structures to include them as well.
-#ifndef USERIAL_IS_SEREMU
-USBDriver *drivers[] = {&userial, &hub1};
-#define CNT_DEVICES (sizeof(drivers)/sizeof(drivers[0]))
-const char * driver_names[CNT_DEVICES] = {"USERIAL", "Hub1"};
-bool driver_active[CNT_DEVICES] = {false, false};
-
-#else
-// For SEREMU
-USBDriver *drivers[] = {&hid1, &hid2, &hub1};
-#define CNT_DEVICES (sizeof(drivers)/sizeof(drivers[0]))
-const char * driver_names[CNT_DEVICES] = {"HID1", "HID2", "Hub1"};
-bool driver_active[CNT_DEVICES] = {false, false, false};
-// Lets also look at HID Input devices
-USBHIDInput *hiddrivers[] = {&userial };
-#define CNT_HIDDEVICES (sizeof(hiddrivers) / sizeof(hiddrivers[0]))
-const char *hid_driver_names[CNT_DEVICES] = { "USERIAL" };
-bool hid_driver_active[CNT_DEVICES] = { false };
-#endif  // USERIAL_IS_SEREMU
-
-#endif
-
-
-
 //=============================================================================
 // Setup - only runs once
 //=============================================================================
 void setup() {
   myusb.begin();
-  // pre-Configure the USB Host Serial adapter at startup time
-  // Note: versions up till now, this needed to be done after the device connects
-  // and at that time the connecton defaulted to 115200
-  // In both of these begins below, the actual baud rate specified does not impact the USB communications.
-  // it is simply a hint to the devices that allow them to configure other parts of their device.  Example
-  // USB to serial devices use this to figure their hardware USART or UART. 
+
   userial.begin(USBBAUD); 
   Serial.begin(USBBAUD);
-
-  pinMode(LED_BUILTIN, OUTPUT);
 
   if (!rfm96.init()){
     Serial.println("Failed to initialize RFM96!");
@@ -131,7 +87,6 @@ void setup() {
     Serial.println("Radio is initialized");
   }
 
-  //rfm96.setModem(6, 4, 12);
   rfm96.setTxPower(20);
 
 }
@@ -144,28 +99,6 @@ void loop() {
  
   uint16_t rd, wr, n;
 
-  // check if any data has arrived on the USB virtual serial port
-  rd = Serial.available();
-  if (rd > 0) {
-    // check if the USB Host serial port is ready to transmit
-    wr = userial.availableForWrite();
-    if (wr > 0) {
-      // compute how much data to move, the smallest
-      // of rd, wr and the buffer size
-      if (rd > wr) rd = wr;
-      if (rd > sizeof(buffer)) rd = sizeof(buffer);
-      // read data from the USB port
-      n = Serial.readBytes((char *)buffer, rd);
-      // write it to the USB Host serial port
-      DBGPrintf("S-U(%u %u)\n", rd, n);
-      userial.write(buffer, n);
-      // turn on the LED to indicate activity
-      digitalWrite(LED_BUILTIN, HIGH);
-      led_on_time = millis();
-
-    }
-  }
-
   // check if any data has arrived on the USBHost serial port
   rd = userial.available();
   if (rd > 0) {
@@ -174,28 +107,41 @@ void loop() {
     if (wr > 0) {
       // compute how much data to move, the smallest
       // of rd, wr and the buffer size
-      if (rd > wr) rd = wr;
-      if (rd > 80) rd = 80;
+      //if (rd > wr) rd = wr;
+      if (rd > 180) rd = 180;
       // read data from the USB host serial port
       n = userial.readBytes((char *)buffer, rd);
       // write it to the USB port
-      DBGPrintf("U-S(%u %u):", rd, n);
-      Serial.write(buffer, n);
-      // turn on the LED to indicate activity
-      digitalWrite(LED_BUILTIN, HIGH);
-     
-      led_on_time = millis();
+      //DBGPrintf("U-S(%u %u):", rd, n);
+      //Serial.write(buffer, n);
+      //Serial.println(" ");
+      //const char* temp = "123 23e1 333 67 67 HEllo World!";
+      String test(buffer);
+      String receivedData(test.substring(0, n));
+      receivedData.replace("\t", " ");
 
-      rfm96.printToBuffer(buffer);
-      rfm96.sendAndWriteToFile();
-      //rfm96.clear();
+      int index = 0;
+
+      Serial.println("New Incoming Data");
+
+      while (index < n)
+      {
+        int endOfWord = receivedData.indexOf(" ", index);
+        if (endOfWord == -1)
+        {
+          break;
+        }
+
+        Serial.print("---->");
+        Serial.println(receivedData.substring(index, endOfWord));
+        index = endOfWord + 1;
+      }
+      //Serial.println(test.substring(0, n));
+      //Serial.println("------------");
+
+      //rfm96.printToBuffer(buffer);
+      //rfm96.sendAndWriteToFile();
     }
-  }
-
-  // if the LED has been left on without more activity, turn it off
-  if (led_on_time && (millis() - led_on_time > 3)) {
-    digitalWrite(LED_BUILTIN, LOW);
-    led_on_time = 0; 
   }
 
   // check if the USB virtual serial wants a new baud rate
@@ -220,67 +166,5 @@ void loop() {
       userial.begin(baud);
     }
   }
-
-  // Optional check for defice changes
-  #ifdef PRINT_DEVICE_INFO
-  check_for_usbhost_device_changes();
-  #endif
 }
 
-// Optional check for defice changes
-#ifdef PRINT_DEVICE_INFO
-void check_for_usbhost_device_changes() {
-  // Print out information about different devices.
-  for (uint8_t i = 0; i < CNT_DEVICES; i++) {
-    if (*drivers[i] != driver_active[i]) {
-      if (driver_active[i]) {
-        Serial.printf("*** Device %s - disconnected ***\n", driver_names[i]);
-        driver_active[i] = false;
-      } else {
-        Serial.printf("*** Device %s %x:%x - connected ***\n", driver_names[i], drivers[i]->idVendor(), drivers[i]->idProduct());
-        driver_active[i] = true;
-
-        const uint8_t *psz = drivers[i]->manufacturer();
-        if (psz && *psz) Serial.printf("  manufacturer: %s\n", psz);
-        psz = drivers[i]->product();
-        if (psz && *psz) Serial.printf("  product: %s\n", psz);
-        psz = drivers[i]->serialNumber();
-        if (psz && *psz) Serial.printf("  Serial: %s\n", psz);
-        #ifndef USERIAL_IS_SEREMU
-        if (drivers[i] == &userial) {
-          userial.begin(baud);
-        }
-        #endif
-      }
-    }
-  }
-#ifdef USERIAL_IS_SEREMU
-
-  for (uint8_t i = 0; i < CNT_HIDDEVICES; i++) {
-    if (*hiddrivers[i] != hid_driver_active[i]) {
-      if (hid_driver_active[i]) {
-        Serial.printf("*** HID Device %s - disconnected ***\n", hid_driver_names[i]);
-        hid_driver_active[i] = false;
-      } else {
-        Serial.printf("*** HID Device %s %x:%x - connected ***\n", hid_driver_names[i], hiddrivers[i]->idVendor(), hiddrivers[i]->idProduct());
-        hid_driver_active[i] = true;
-
-        const uint8_t *psz = hiddrivers[i]->manufacturer();
-        if (psz && *psz) Serial.printf("  manufacturer: %s\n", psz);
-        psz = hiddrivers[i]->product();
-        if (psz && *psz) Serial.printf("  product: %s\n", psz);
-        psz = hiddrivers[i]->serialNumber();
-        if (psz && *psz) Serial.printf("  Serial: %s\n", psz);
-        //        if (hiddrivers[i] == &seremu) {
-        //          Serial.printf("   RX Size:%u TX Size:%u\n", seremu.rxSize(), seremu.txSize());
-        //        }
-        //        if (hiddrivers[i] == &rawhid1) {
-        //          Serial.printf("   RX Size:%u TX Size:%u\n", rawhid1.rxSize(), rawhid1.txSize());
-        //        }
-      }
-    }
-  }
-#endif
-
-}
-#endif

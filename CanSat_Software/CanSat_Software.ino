@@ -1,3 +1,7 @@
+#include <Cansat_RFM96.h>
+
+Cansat_RFM96 rfm96(433500, false); 
+
 //=============================================================================
 // Simple USBHost USBSerial test
 // This sketch is very much like the main teensy example: USBtoSerial.ino
@@ -36,8 +40,6 @@ USBHost myusb;
 USBHub hub1(myusb);
 //USBHub hub2(myusb);
 //USBHub hub3(myusb);
-
-//Temp
 
 // There is now two versions of the USBSerial class, that are both derived from a common Base class
 // The difference is on how large of transfers that it can handle.  This is controlled by
@@ -122,6 +124,16 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
 
+  if (!rfm96.init()){
+    Serial.println("Failed to initialize RFM96!");
+  }
+  else {
+    Serial.println("Radio is initialized");
+  }
+
+  //rfm96.setModem(6, 4, 12);
+  rfm96.setTxPower(20);
+
 }
 
 //=============================================================================
@@ -129,7 +141,7 @@ void setup() {
 //=============================================================================
 void loop() {
   myusb.Task(); 
-
+ 
   uint16_t rd, wr, n;
 
   // check if any data has arrived on the USB virtual serial port
@@ -150,6 +162,7 @@ void loop() {
       // turn on the LED to indicate activity
       digitalWrite(LED_BUILTIN, HIGH);
       led_on_time = millis();
+
     }
   }
 
@@ -170,7 +183,12 @@ void loop() {
       Serial.write(buffer, n);
       // turn on the LED to indicate activity
       digitalWrite(LED_BUILTIN, HIGH);
+     
       led_on_time = millis();
+
+      rfm96.printToBuffer(buffer);
+      rfm96.sendAndWriteToFile();
+      //rfm96.clear();
     }
   }
 

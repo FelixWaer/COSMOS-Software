@@ -24,7 +24,7 @@ USBSerialEmu userial(myusb);
 //=============================================================================
 // Other Objects
 //=============================================================================
-Cansat_RFM96 rfm96(433500, false); 
+Cansat_RFM96 rfm96(433000, false); 
 
 uint8_t txArray[100];
 
@@ -139,8 +139,8 @@ void loop() {
       //Serial.println(test.substring(0, n));
       //Serial.println("------------");
 
-      //rfm96.printToBuffer(buffer);
-      //rfm96.sendAndWriteToFile();
+      rfm96.printToBuffer(buffer);
+      rfm96.sendAndWriteToFile();
     }
   }
 

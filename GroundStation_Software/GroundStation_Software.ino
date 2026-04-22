@@ -1,6 +1,6 @@
 #include <Cansat_RFM96.h>
 
-Cansat_RFM96 rfm96(433500, false);
+Cansat_RFM96 rfm96(433000, false);
 unsigned long time_counter=0;
 
 uint8_t buffer[512];

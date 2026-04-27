@@ -27,13 +27,15 @@ USBSerialEmu userial(myusb);
 //=============================================================================
 // Other Objects
 //=============================================================================
-Cansat_RFM96 rfm96(433000, false);
+Cansat_RFM96 rfm96(433500, false);
 //Adafruit_GPS GPS(&GPSSerial);
 
 uint8_t txBuffer[100];
 uint8_t GPSArray[100];
 int DataCounter = 0;
 uint16_t FrameCounter = 0;
+uint16_t MuonCount = 0;
+uint16_t TotalCount = 0;
 
 #define GPSECHO  false
 
@@ -97,6 +99,7 @@ void setup()
   if (!rfm96.init()) 
   {
     Serial.println("Failed to initialize RFM96!");
+    while(1){};
   } 
   else 
   {
@@ -126,6 +129,8 @@ void setup()
   timer = 0;
   DataCounter = 0;
   FrameCounter = 0;
+  MuonCount = 0;
+  TotalCount = 0;
 }
 
 //=============================================================================
@@ -196,9 +201,10 @@ void handle_CosmicWatchData()
     // read data from the USB host serial port
     n = userial.readBytes((char *)buffer, rd);
 
-    //rfm96.printToBuffer(buffer);
+    //rfm96.printToBuffer((char *)buffer);
     //rfm96.sendAndWriteToFile();
-    //Serial.write(buffer, n);
+    Serial.write(buffer, n);
+    Serial.println("");
 
     //Convert the received data into a string to make it easier to do string manipulation to split out the different variables.
     String stringBuffer(buffer);
@@ -213,6 +219,7 @@ void handle_CosmicWatchData()
 
       if (endOfWord == -1) 
       {
+        
         break;
       }
 
@@ -225,12 +232,18 @@ void handle_CosmicWatchData()
       {
         Serial.println("");
         //Serial.println("Have gotten the whole message!");
-
+        float test = 1;
+        uint16_t testing = 1;
+        memcpy(&txBuffer[2], &test, sizeof(float));
+        memcpy(&txBuffer[6], &test, sizeof(float));
+        memcpy(&txBuffer[10], &testing, sizeof(uint16_t));
         DataCounter = 0;
         FrameCounter++;
         memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
-        //rfm96.printToBuffer((char*)txBuffer);
-        rfm96.add((char*)txBuffer, 20);
+        memcpy(&txBuffer[18], &TotalCount, sizeof(uint16_t));
+        memcpy(&txBuffer[20], &MuonCount, sizeof(uint16_t));
+        //rfm96.printToBuffer("1");
+        rfm96.add((char*)txBuffer, 34);
         rfm96.sendAndWriteToFile();
       }
 
@@ -246,24 +259,66 @@ void prepare_TXBuffer(String data)
   int index = 0;
   int endOfWord = 0;
 
-  int16_t temperature;
+  uint16_t temperature;
   float tempFloat;
 
   switch (DataCounter)
   {
+    case 0:
+      Serial.print(data);
+      Serial.print(" ");
+      break;
+
+    case 1:
+      Serial.print(data);
+      Serial.print(" ");
+      break;
+
+    case 2:
+      Serial.print(data);
+      Serial.print(" ");
+      if (data == '1')
+      {
+        MuonCount++;
+      }
+      else 
+      {
+        TotalCount++;
+      }
+      break;
+
+    case 3:
+      Serial.print(data);
+      Serial.print(" ");
+      break;
+
+    case 4:
+      Serial.print(data);
+      Serial.print(" ");
+      break;
+
+    case 5:
+      Serial.print(data);
+      Serial.print(" ");
+      break;
+
     case 6:
-      temperature = (int16_t)(data.toFloat() * 10);
-      memcpy(&txBuffer[2], &temperature, sizeof(int16_t));
+      Serial.print(data);
+      Serial.print(" ");
+      temperature = (uint16_t)(data.toFloat() * 10);
+      memcpy(&txBuffer[12], &temperature, sizeof(uint16_t));
       break;
     
     case 7:
+      Serial.print(data);
+      Serial.print(" ");
       tempFloat = data.toFloat();
-      memcpy(&txBuffer[4], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[14], &tempFloat, sizeof(float));
       break;
     
     case 8:
-      Serial.println(data);
-      
+      Serial.print(data);
+      Serial.print(" ");
       endOfWord = data.indexOf(":", index);
 
       if(endOfWord == -1)
@@ -272,7 +327,7 @@ void prepare_TXBuffer(String data)
       }
 
       tempFloat = data.substring(index, endOfWord).toFloat();
-      memcpy(&txBuffer[8], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[22], &tempFloat, sizeof(float));
       //Serial.print(tempFloat);
       //Serial.print(", ");
 
@@ -281,17 +336,22 @@ void prepare_TXBuffer(String data)
       endOfWord = data.indexOf(":", index);
 
       tempFloat = data.substring(index, endOfWord).toFloat();
-      memcpy(&txBuffer[12], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[26], &tempFloat, sizeof(float));
       //Serial.print(tempFloat);
       //Serial.print(", ");
 
       index = endOfWord + 1;
 
       tempFloat = data.substring(index, data.length()).toFloat();
-      memcpy(&txBuffer[16], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[30], &tempFloat, sizeof(float));
       //Serial.print(tempFloat);
       //Serial.print(", ");
 
+      break;
+
+    case 9:
+      Serial.print(data);
+      Serial.print(" ");
       break;
 
     default:

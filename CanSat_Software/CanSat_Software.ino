@@ -1,8 +1,11 @@
 #include <Cansat_RFM96.h>
 #include <USBHost_t36.h>
+#include <Adafruit_GPS.h>
 
 #define PRINT_DEVICE_INFO
-#define USBBAUD 1000000 //115200
+#define USBBAUD 1000000  //115200
+#define TimeWait 10000
+#define GPSSerial Serial1
 
 //=============================================================================
 // USB Objects
@@ -24,9 +27,15 @@ USBSerialEmu userial(myusb);
 //=============================================================================
 // Other Objects
 //=============================================================================
-Cansat_RFM96 rfm96(433500, false); 
+Cansat_RFM96 rfm96(433000, false);
+//Adafruit_GPS GPS(&GPSSerial);
 
-uint8_t txArray[100];
+uint8_t txBuffer[100];
+uint8_t GPSArray[100];
+int DataCounter = 0;
+uint16_t FrameCounter = 0;
+
+#define GPSECHO  false
 
 static const uint8_t CRC_TABLE[256] = {
   0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15,
@@ -63,6 +72,10 @@ static const uint8_t CRC_TABLE[256] = {
   0xE6, 0xE1, 0xE8, 0xEF, 0xFA, 0xFD, 0xF4, 0xF3
 };
 
+bool startup = true;
+uint32_t timer = 0;
+uint32_t TimeAtStart = 0;
+
 #ifdef DEBUG_OUTPUT
 #define DBGPrintf Serial.printf
 #else
@@ -74,97 +87,239 @@ inline void DBGPrintf(...) {
 //=============================================================================
 // Setup - only runs once
 //=============================================================================
-void setup() {
+void setup() 
+{
   myusb.begin();
 
-  userial.begin(USBBAUD); 
+  userial.begin(USBBAUD);
   Serial.begin(USBBAUD);
 
-  if (!rfm96.init()){
+  if (!rfm96.init()) 
+  {
     Serial.println("Failed to initialize RFM96!");
-  }
-  else {
+  } 
+  else 
+  {
     Serial.println("Radio is initialized");
   }
 
   rfm96.setTxPower(20);
 
+//  GPS.begin(9600);
+
+//  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+//  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+
+//  if (GPS.LOCUS_StartLogger())
+//  {
+//    Serial.println("GPS initialized");
+//  }
+//  else 
+//  {
+//    Serial.println("GPS no response");
+//  }
+
+  Serial.println("Starting up!");
+
+  startup = true;
+  TimeAtStart = millis();
+  timer = 0;
+  DataCounter = 0;
+  FrameCounter = 0;
 }
 
 //=============================================================================
 // loop: continuously called.
 //=============================================================================
-void loop() {
-  myusb.Task(); 
- 
-  uint16_t rd, wr, n;
+void loop() 
+{
+  myusb.Task();
 
-  // check if any data has arrived on the USBHost serial port
-  rd = userial.available();
-  if (rd > 0) {
-    // check if the USB virtual serial port is ready to transmit
-    wr = Serial.availableForWrite();
-    if (wr > 0) {
-      // compute how much data to move, the smallest
-      // of rd, wr and the buffer size
-      //if (rd > wr) rd = wr;
-      if (rd > 180) rd = 180;
-      // read data from the USB host serial port
-      n = userial.readBytes((char *)buffer, rd);
-      // write it to the USB port
-      //DBGPrintf("U-S(%u %u):", rd, n);
-      //Serial.write(buffer, n);
-      //Serial.println(" ");
-      //const char* temp = "123 23e1 333 67 67 HEllo World!";
-      String test(buffer);
-      String receivedData(test.substring(0, n));
-      receivedData.replace("\t", " ");
+  if (startup == true) 
+  {
+    startup_Timer();
+  } 
+  else 
+  {
+//    int gpsBytes = GPSSerial.available();
+//    if (gpsBytes > 0)
+//    {
+//      //char c = GPSSerial.read();
+//      GPSSerial.readBytes(GPSArray, gpsBytes);
+//      //Serial.write(GPSArray, gpsBytes);
+//    }
 
-      int index = 0;
-
-      Serial.println("New Incoming Data");
-
-      while (index < n)
-      {
-        int endOfWord = receivedData.indexOf(" ", index);
-        if (endOfWord == -1)
-        {
-          break;
-        }
-
-        Serial.print("---->");
-        Serial.println(receivedData.substring(index, endOfWord));
-        index = endOfWord + 1;
-      }
-      //Serial.println(test.substring(0, n));
-      //Serial.println("------------");
-
-      //rfm96.printToBuffer(buffer);
-      //rfm96.sendAndWriteToFile();
-    }
+    handle_CosmicWatchData();
   }
 
-  // check if the USB virtual serial wants a new baud rate
-  // ignore if 0 as current Serial monitor of Arduino sets to 0..
-  uint32_t cur_usb_baud = Serial.baud();
-  if (cur_usb_baud && (cur_usb_baud != baud)) {
-    baud = cur_usb_baud;
-    DBGPrintf("DEBUG: baud change: %u\n", baud);
-    if (baud == 57600) {
-      // This ugly hack is necessary for talking
-      // to the arduino bootloader, which actually
-      // communicates at 58824 baud (+2.1% error).
-      // Teensyduino will configure the UART for
-      // the closest baud rate, which is 57143
-      // baud (-0.8% error).  Serial communication
-      // can tolerate about 2.5% error, so the
-      // combined error is too large.  Simply
-      // setting the baud rate to the same as
-      // arduino's actual baud rate works.
-      userial.begin(58824);
-    } else {
-      userial.begin(baud);
+      // check if the USB virtual serial wants a new baud rate
+    // ignore if 0 as current Serial monitor of Arduino sets to 0..
+    uint32_t cur_usb_baud = Serial.baud();
+    if (cur_usb_baud && (cur_usb_baud != baud)) 
+    {
+      baud = cur_usb_baud;
+      DBGPrintf("DEBUG: baud change: %u\n", baud);
+      if (baud == 57600) 
+      {
+        // This ugly hack is necessary for talking
+        // to the arduino bootloader, which actually
+        // communicates at 58824 baud (+2.1% error).
+        // Teensyduino will configure the UART for
+        // the closest baud rate, which is 57143
+        // baud (-0.8% error).  Serial communication
+        // can tolerate about 2.5% error, so the
+        // combined error is too large.  Simply
+        // setting the baud rate to the same as
+        // arduino's actual baud rate works.
+        userial.begin(58824);
+      } 
+      else 
+      {
+        userial.begin(baud);
+      }
+    }
+}
+
+void handle_CosmicWatchData() 
+{
+  // check if any data has arrived on the USBHost serial port
+  uint16_t n;
+  uint16_t rd = userial.available();
+
+  if (rd > 0) 
+  {
+    // check if the USB virtual serial port is ready to transmit
+    if (rd > 80) 
+    {
+      rd = 80;
+    }
+    // read data from the USB host serial port
+    n = userial.readBytes((char *)buffer, rd);
+
+    //rfm96.printToBuffer(buffer);
+    //rfm96.sendAndWriteToFile();
+    //Serial.write(buffer, n);
+
+    //Convert the received data into a string to make it easier to do string manipulation to split out the different variables.
+    String stringBuffer(buffer);
+    String receivedData(stringBuffer.substring(0, n));
+    receivedData.replace("\t", " ");
+
+    int index = 0;
+
+    while (index < n) 
+    {
+      int endOfWord = receivedData.indexOf(" ", index);
+
+      if (endOfWord == -1) 
+      {
+        break;
+      }
+
+      prepare_TXBuffer(receivedData.substring(index, endOfWord));
+
+      DataCounter++;
+      //rfm96.printToBuffer(receivedData.substring(index, endOfWord));
+
+      if (DataCounter >= 10) 
+      {
+        Serial.println("");
+        //Serial.println("Have gotten the whole message!");
+
+        DataCounter = 0;
+        FrameCounter++;
+        memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
+        //rfm96.printToBuffer((char*)txBuffer);
+        rfm96.add((char*)txBuffer, 20);
+        rfm96.sendAndWriteToFile();
+      }
+
+      index = endOfWord + 1;
     }
   }
 }
 
+void prepare_TXBuffer(String data)
+{
+  //Serial.print(data);
+  //Serial.print(", ");
+  int index = 0;
+  int endOfWord = 0;
+
+  int16_t temperature;
+  float tempFloat;
+
+  switch (DataCounter)
+  {
+    case 6:
+      temperature = (int16_t)(data.toFloat() * 10);
+      memcpy(&txBuffer[2], &temperature, sizeof(int16_t));
+      break;
+    
+    case 7:
+      tempFloat = data.toFloat();
+      memcpy(&txBuffer[4], &tempFloat, sizeof(float));
+      break;
+    
+    case 8:
+      Serial.println(data);
+      
+      endOfWord = data.indexOf(":", index);
+
+      if(endOfWord == -1)
+      {
+        break;
+      }
+
+      tempFloat = data.substring(index, endOfWord).toFloat();
+      memcpy(&txBuffer[8], &tempFloat, sizeof(float));
+      //Serial.print(tempFloat);
+      //Serial.print(", ");
+
+      index = endOfWord + 1;
+
+      endOfWord = data.indexOf(":", index);
+
+      tempFloat = data.substring(index, endOfWord).toFloat();
+      memcpy(&txBuffer[12], &tempFloat, sizeof(float));
+      //Serial.print(tempFloat);
+      //Serial.print(", ");
+
+      index = endOfWord + 1;
+
+      tempFloat = data.substring(index, data.length()).toFloat();
+      memcpy(&txBuffer[16], &tempFloat, sizeof(float));
+      //Serial.print(tempFloat);
+      //Serial.print(", ");
+
+      break;
+
+    default:
+      break;
+  }
+}
+
+void startup_Timer() 
+{
+  uint16_t rd;
+  uint16_t n;
+  //Calculate the time passed since the CanSat was powered up
+  timer = millis() - TimeAtStart;
+
+  //Check if the enough time has passed to start reading data from the Cosmic Watch.
+  //This is because the Cosmic Watch writes a lot of messages when starting up that we don't want
+  if (timer >= TimeWait) 
+  {
+    startup = false;
+    Serial.println("Will now read the data!");
+  }
+
+  rd = userial.available();
+
+  //Keep reading data arriving from the Cosmic Watch. This is to prevent it from restarting the Cosmic Watch
+  if (rd > 0) 
+  {
+    n = userial.readBytes((char *)buffer, rd);
+    Serial.write(buffer, n);
+  }
+}

@@ -232,18 +232,21 @@ void handle_CosmicWatchData()
       {
         Serial.println("");
         //Serial.println("Have gotten the whole message!");
-        float test = 1;
-        uint16_t testing = 1;
+        float test = 0;
+        uint16_t testing = 0;
+        uint8_t crcTest = 5;
         memcpy(&txBuffer[2], &test, sizeof(float));
         memcpy(&txBuffer[6], &test, sizeof(float));
         memcpy(&txBuffer[10], &testing, sizeof(uint16_t));
+        memcpy(&txBuffer[40], &crcTest, sizeof(uint8_t));
+        memcpy(&txBuffer[41], &crcTest, sizeof(uint8_t));
         DataCounter = 0;
         FrameCounter++;
         memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
         memcpy(&txBuffer[18], &TotalCount, sizeof(uint16_t));
         memcpy(&txBuffer[20], &MuonCount, sizeof(uint16_t));
         //rfm96.printToBuffer("1");
-        rfm96.add((char*)txBuffer, 34);
+        rfm96.add((char*)txBuffer, 42);
         rfm96.sendAndWriteToFile();
       }
 
@@ -259,7 +262,7 @@ void prepare_TXBuffer(String data)
   int index = 0;
   int endOfWord = 0;
 
-  uint16_t temperature;
+  int16_t tempInt;
   float tempFloat;
 
   switch (DataCounter)
@@ -305,8 +308,8 @@ void prepare_TXBuffer(String data)
     case 6:
       Serial.print(data);
       Serial.print(" ");
-      temperature = (uint16_t)(data.toFloat() * 10);
-      memcpy(&txBuffer[12], &temperature, sizeof(uint16_t));
+      tempInt = (int16_t)(data.toFloat() * 10);
+      memcpy(&txBuffer[12], &tempInt, sizeof(int16_t));
       break;
     
     case 7:
@@ -328,8 +331,6 @@ void prepare_TXBuffer(String data)
 
       tempFloat = data.substring(index, endOfWord).toFloat();
       memcpy(&txBuffer[22], &tempFloat, sizeof(float));
-      //Serial.print(tempFloat);
-      //Serial.print(", ");
 
       index = endOfWord + 1;
 
@@ -337,21 +338,42 @@ void prepare_TXBuffer(String data)
 
       tempFloat = data.substring(index, endOfWord).toFloat();
       memcpy(&txBuffer[26], &tempFloat, sizeof(float));
-      //Serial.print(tempFloat);
-      //Serial.print(", ");
 
       index = endOfWord + 1;
 
       tempFloat = data.substring(index, data.length()).toFloat();
       memcpy(&txBuffer[30], &tempFloat, sizeof(float));
-      //Serial.print(tempFloat);
-      //Serial.print(", ");
-
       break;
 
     case 9:
       Serial.print(data);
       Serial.print(" ");
+            endOfWord = data.indexOf(":", index);
+
+      if(endOfWord == -1)
+      {
+        break;
+      }
+
+      tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
+      Serial.println("");
+      Serial.print(tempInt);
+      memcpy(&txBuffer[34], &tempInt, sizeof(int16_t));
+
+      index = endOfWord + 1;
+
+      endOfWord = data.indexOf(":", index);
+
+      tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
+      memcpy(&txBuffer[36], &tempInt, sizeof(int16_t));
+            Serial.println("");
+      Serial.print(tempInt);
+      index = endOfWord + 1;
+
+      tempInt = (int16_t)(data.substring(index, data.length()).toFloat() * 10.f);
+      memcpy(&txBuffer[38], &tempInt, sizeof(int16_t));
+            Serial.println("");
+      Serial.print(tempInt);
       break;
 
     default:

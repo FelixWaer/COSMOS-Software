@@ -47,16 +47,34 @@ void loop() {
   if (bufferCounter > 0){
     //Serial.write(buffer, bufferCounter);
     uint16_t frame;
-    uint16_t temperature;
+    float latitude;
+    float longitude;
+    uint16_t altitude;
+    float temperature;
     float pressure;
     uint16_t TotalCount;
     uint16_t MuonCount;
     float accel_X;
     float accel_Y;
     float accel_Z;
+    float gyro_X;
+    float gyro_Y;
+    float gyro_Z;
+    int8_t crc_GPS;
+    int8_t crc_Telemetry;
+
+    uint16_t tempUnsigned;
+    int16_t tempSigned;
 
     memcpy(&frame, &buffer[0], sizeof(uint16_t));
-    memcpy(&temperature, &buffer[12], sizeof(uint16_t));
+    memcpy(&latitude, &buffer[2], sizeof(float));
+    memcpy(&longitude, &buffer[6], sizeof(float));
+    memcpy(&altitude, &buffer[10], sizeof(uint16_t));
+
+    memcpy(&tempUnsigned, &buffer[12], sizeof(uint16_t));
+    temperature = (float)tempUnsigned;
+    temperature /= 10.f;
+    
     memcpy(&pressure, &buffer[14], sizeof(float));
     memcpy(&TotalCount, &buffer[18], sizeof(uint16_t));
     memcpy(&MuonCount, &buffer[20], sizeof(uint16_t));
@@ -64,8 +82,27 @@ void loop() {
     memcpy(&accel_Y, &buffer[26], sizeof(float));
     memcpy(&accel_Z, &buffer[30], sizeof(float));
 
-    Serial.println(bufferCounter);
+    memcpy(&tempSigned, &buffer[34], sizeof(int16_t));
+    gyro_X = (float)tempSigned;
+    gyro_X /= 10.f;
+    memcpy(&tempSigned, &buffer[36], sizeof(int16_t));
+    gyro_Y = (float)tempSigned;
+    gyro_Y /= 10.f;
+    memcpy(&tempSigned, &buffer[38], sizeof(int16_t));
+    gyro_Z = (float)tempSigned;
+    gyro_Z /= 10.f;
+
+
+    memcpy(&crc_GPS, &buffer[40], sizeof(int8_t));
+    memcpy(&crc_Telemetry, &buffer[41], sizeof(int8_t));
+
     Serial.print(frame);
+    Serial.print(", ");
+    Serial.print(latitude);
+    Serial.print(", ");
+    Serial.print(longitude);
+    Serial.print(", ");
+    Serial.print(altitude);
     Serial.print(", ");
     Serial.print(temperature); 
     Serial.print(", ");
@@ -79,7 +116,17 @@ void loop() {
     Serial.print(", ");
     Serial.print(accel_Y); 
     Serial.print(", ");
-    Serial.print(accel_Z); 
+    Serial.print(accel_Z);
+    Serial.print(", ");
+    Serial.print(gyro_X); 
+    Serial.print(", ");
+    Serial.print(gyro_Y); 
+    Serial.print(", ");
+    Serial.print(gyro_Z);
+    Serial.print(", ");
+    Serial.print(crc_GPS); 
+    Serial.print(", ");
+    Serial.print(crc_Telemetry); 
 
     Serial.println();
   }

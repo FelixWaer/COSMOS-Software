@@ -3,7 +3,7 @@
 #include <Adafruit_GPS.h>
 
 #define PRINT_DEVICE_INFO
-#define USBBAUD 1000000  //115200
+#define USBBAUD 115200  //115200
 #define TimeWait 10000
 #define GPSSerial Serial1
 
@@ -28,7 +28,7 @@ USBSerialEmu userial(myusb);
 // Other Objects
 //=============================================================================
 Cansat_RFM96 rfm96(433500, false);
-//Adafruit_GPS GPS(&GPSSerial);
+Adafruit_GPS GPS(&GPSSerial);
 
 uint8_t txBuffer[100];
 uint8_t GPSArray[100];
@@ -36,6 +36,9 @@ int DataCounter = 0;
 uint16_t FrameCounter = 0;
 uint16_t MuonCount = 0;
 uint16_t TotalCount = 0;
+uint32_t TransmitTimer = 0;
+bool MessageReceived = false;
+
 
 #define GPSECHO  false
 
@@ -94,38 +97,31 @@ void setup()
   myusb.begin();
 
   userial.begin(USBBAUD);
-  Serial.begin(USBBAUD);
+  //Serial.begin(USBBAUD);
 
   if (!rfm96.init()) 
   {
-    Serial.println("Failed to initialize RFM96!");
+    //Serial.println("Failed to initialize RFM96!");
     while(1){};
   } 
   else 
   {
-    Serial.println("Radio is initialized");
+    //Serial.println("Radio is initialized");
   }
 
   rfm96.setTxPower(20);
 
-//  GPS.begin(9600);
+  GPS.begin(9600);
 
-//  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-//  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
-//  if (GPS.LOCUS_StartLogger())
-//  {
-//    Serial.println("GPS initialized");
-//  }
-//  else 
-//  {
-//    Serial.println("GPS no response");
-//  }
-
-  Serial.println("Starting up!");
+  //Serial.println("Starting up!");
 
   startup = true;
   TimeAtStart = millis();
+  TransmitTimer = millis();
   timer = 0;
   DataCounter = 0;
   FrameCounter = 0;
@@ -140,21 +136,30 @@ void loop()
 {
   myusb.Task();
 
+  char gps_Data = GPS.read();
+  
+  if (GPS.newNMEAreceived()) {
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+    //Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+    if (!GPS.parse(GPS.lastNMEA())) {}// this also sets the newNMEAreceived() flag to false
+     // return; // we can fail to parse a sentence in which case we should just wait for another
+  }
+
   if (startup == true) 
   {
     startup_Timer();
   } 
   else 
   {
-//    int gpsBytes = GPSSerial.available();
-//    if (gpsBytes > 0)
-//    {
-//      //char c = GPSSerial.read();
-//      GPSSerial.readBytes(GPSArray, gpsBytes);
-//      //Serial.write(GPSArray, gpsBytes);
-//    }
-
     handle_CosmicWatchData();
+
+    if (millis() - TransmitTimer >= 1000 && MessageReceived == true)
+    {
+      TransmitTimer = millis();
+      transmit_Data();
+    }
   }
 
       // check if the USB virtual serial wants a new baud rate
@@ -203,8 +208,8 @@ void handle_CosmicWatchData()
 
     //rfm96.printToBuffer((char *)buffer);
     //rfm96.sendAndWriteToFile();
-    Serial.write(buffer, n);
-    Serial.println("");
+    //Serial.write(buffer, n);
+    //Serial.println("");
 
     //Convert the received data into a string to make it easier to do string manipulation to split out the different variables.
     String stringBuffer(buffer);
@@ -226,28 +231,11 @@ void handle_CosmicWatchData()
       prepare_TXBuffer(receivedData.substring(index, endOfWord));
 
       DataCounter++;
-      //rfm96.printToBuffer(receivedData.substring(index, endOfWord));
 
       if (DataCounter >= 10) 
       {
-        Serial.println("");
-        //Serial.println("Have gotten the whole message!");
-        float test = 0;
-        uint16_t testing = 0;
-        uint8_t crcTest = 5;
-        memcpy(&txBuffer[2], &test, sizeof(float));
-        memcpy(&txBuffer[6], &test, sizeof(float));
-        memcpy(&txBuffer[10], &testing, sizeof(uint16_t));
-        memcpy(&txBuffer[40], &crcTest, sizeof(uint8_t));
-        memcpy(&txBuffer[41], &crcTest, sizeof(uint8_t));
         DataCounter = 0;
-        FrameCounter++;
-        memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
-        memcpy(&txBuffer[18], &TotalCount, sizeof(uint16_t));
-        memcpy(&txBuffer[20], &MuonCount, sizeof(uint16_t));
-        //rfm96.printToBuffer("1");
-        rfm96.add((char*)txBuffer, 42);
-        rfm96.sendAndWriteToFile();
+        MessageReceived = true;
       }
 
       index = endOfWord + 1;
@@ -257,29 +245,16 @@ void handle_CosmicWatchData()
 
 void prepare_TXBuffer(String data)
 {
-  //Serial.print(data);
-  //Serial.print(", ");
-  int index = 0;
-  int endOfWord = 0;
-
+  int endOfWord;
+  int index;
   int16_t tempInt;
   float tempFloat;
 
   switch (DataCounter)
   {
-    case 0:
-      Serial.print(data);
-      Serial.print(" ");
-      break;
-
-    case 1:
-      Serial.print(data);
-      Serial.print(" ");
-      break;
-
     case 2:
-      Serial.print(data);
-      Serial.print(" ");
+      //Serial.print(data);
+      //Serial.print(" ");
       if (data == '1')
       {
         MuonCount++;
@@ -289,39 +264,24 @@ void prepare_TXBuffer(String data)
         TotalCount++;
       }
       break;
-
-    case 3:
-      Serial.print(data);
-      Serial.print(" ");
-      break;
-
-    case 4:
-      Serial.print(data);
-      Serial.print(" ");
-      break;
-
-    case 5:
-      Serial.print(data);
-      Serial.print(" ");
-      break;
-
+      
     case 6:
-      Serial.print(data);
-      Serial.print(" ");
+      //Serial.print(data);
+      //Serial.print(" ");
       tempInt = (int16_t)(data.toFloat() * 10);
       memcpy(&txBuffer[12], &tempInt, sizeof(int16_t));
       break;
     
     case 7:
-      Serial.print(data);
-      Serial.print(" ");
+      //Serial.print(data);
+      //Serial.print(" ");
       tempFloat = data.toFloat();
       memcpy(&txBuffer[14], &tempFloat, sizeof(float));
       break;
     
     case 8:
-      Serial.print(data);
-      Serial.print(" ");
+      //Serial.print(data);
+      //Serial.print(" ");
       endOfWord = data.indexOf(":", index);
 
       if(endOfWord == -1)
@@ -346,9 +306,9 @@ void prepare_TXBuffer(String data)
       break;
 
     case 9:
-      Serial.print(data);
-      Serial.print(" ");
-            endOfWord = data.indexOf(":", index);
+      //Serial.print(data);
+      //Serial.print(" ");
+      endOfWord = data.indexOf(":", index);
 
       if(endOfWord == -1)
       {
@@ -356,8 +316,6 @@ void prepare_TXBuffer(String data)
       }
 
       tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
-      Serial.println("");
-      Serial.print(tempInt);
       memcpy(&txBuffer[34], &tempInt, sizeof(int16_t));
 
       index = endOfWord + 1;
@@ -366,19 +324,50 @@ void prepare_TXBuffer(String data)
 
       tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
       memcpy(&txBuffer[36], &tempInt, sizeof(int16_t));
-            Serial.println("");
-      Serial.print(tempInt);
       index = endOfWord + 1;
 
       tempInt = (int16_t)(data.substring(index, data.length()).toFloat() * 10.f);
       memcpy(&txBuffer[38], &tempInt, sizeof(int16_t));
-            Serial.println("");
-      Serial.print(tempInt);
       break;
 
     default:
       break;
   }
+}
+
+void crc_Calculater()
+{
+  uint8_t crcGPS = 0;
+  uint8_t crcData = 0;
+
+  //Calculating the CRC for the GPS data;
+  uint8_t* pos = &txBuffer[2];
+  uint8_t* end = pos + 10;
+
+  while (pos < end)
+  {
+    crcGPS = CRC_TABLE[crcGPS ^ *pos];
+    pos++;
+  }
+
+  //Caclulating the CRC for the rest of the data
+  pos = txBuffer;
+  end = pos + 28;
+
+  crcData = CRC_TABLE[crcData ^ *pos];
+  pos++;
+  crcData = CRC_TABLE[crcData ^ *pos];
+
+  pos = &txBuffer[12];
+
+  while (pos < end)
+  {
+    crcData = CRC_TABLE[crcData ^ *pos];
+    pos++;
+  }
+
+  txBuffer[40] = crcGPS;
+  txBuffer[41] = crcData;
 }
 
 void startup_Timer() 
@@ -393,7 +382,7 @@ void startup_Timer()
   if (timer >= TimeWait) 
   {
     startup = false;
-    Serial.println("Will now read the data!");
+    //Serial.println("Will now read the data!");
   }
 
   rd = userial.available();
@@ -402,6 +391,35 @@ void startup_Timer()
   if (rd > 0) 
   {
     n = userial.readBytes((char *)buffer, rd);
-    Serial.write(buffer, n);
+    //Serial.write(buffer, n);
   }
+}
+
+void transmit_Data()
+{
+  float latitude = 0;
+  float longitude = 0;
+  uint16_t altitude = 0;
+
+  latitude = GPS.latitude;
+  longitude = GPS.longitude;
+  altitude = (uint16_t)GPS.altitude;
+
+  if (GPS.fix)
+  {
+    //Serial.println("Has Fix!");
+  }
+
+  memcpy(&txBuffer[2], &latitude, sizeof(float));
+  memcpy(&txBuffer[6], &longitude, sizeof(float));
+  memcpy(&txBuffer[10], &altitude, sizeof(uint16_t));
+
+  crc_Calculater();
+  FrameCounter++;
+  memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
+  memcpy(&txBuffer[18], &TotalCount, sizeof(uint16_t));
+  memcpy(&txBuffer[20], &MuonCount, sizeof(uint16_t));
+
+  rfm96.add((char*)txBuffer, 42);
+  rfm96.sendAndWriteToFile();
 }

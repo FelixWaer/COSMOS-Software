@@ -52,14 +52,14 @@ void setup()
   //GPS.sendCommand(PMTK_Q_RELEASE);
 
 
-
-
   Serial.print("\nSTARTING LOGGING....");
   if (GPS.LOCUS_StartLogger())
     Serial.println(" STARTED!");
   else
     Serial.println(" no response :(");
 }
+
+uint32_t timer = millis();
 
 void loop()                     // run over and over again
 {
@@ -69,6 +69,27 @@ void loop()                     // run over and over again
   }
 
   // Do other things here....
+    if (GPS.newNMEAreceived()) {
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trytng to print out data
+    //Serial.println(GPS.lastNMEA());   // this also sets the newNMEAreceived() flag to false
+
+    if (!GPS.parse(GPS.lastNMEA()))   // this also sets the newNMEAreceived() flag to false
+      return;  // we can fail to parse a sentence in which case we should just wait for another
+  }
+
+  if (millis() - timer > 2000) 
+  {
+    timer = millis(); // reset the timer
+
+    Serial.print("Location: ");
+    Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
+    Serial.print(", ");
+    Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
+  }
 }
+
+
 
 /******************************************************************/

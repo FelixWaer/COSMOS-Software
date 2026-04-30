@@ -3,7 +3,7 @@
 Cansat_RFM96 rfm96(433500, false);
 unsigned long time_counter=0;
 
-uint8_t buffer[512];
+uint8_t buffer[46];
 int bufferCounter = 0;
 
 /* CRC lookup table */
@@ -72,37 +72,26 @@ void loop() {
     // something
     time_counter = millis();
     
-    // Read it into a variable. Here we could just directly use:
-    // Serial.write(rfm96.read());
     buffer[bufferCounter] = rfm96.read();
     bufferCounter++;
-    // Write it to file. We do not use Serial.print, because the
-    // conversion to readable ASCII has already been done when
-    // we send it
-
-   
-
   }
 
   if (bufferCounter > 0){
     //Serial.write(buffer, bufferCounter);
-    crc_Caclulater();
     uint16_t frame;
     float latitude;
     float longitude;
     uint16_t altitude;
     float temperature;
     float pressure;
-    uint16_t TotalCount;
-    uint16_t MuonCount;
+    uint32_t TotalCount;
+    uint32_t MuonCount;
     float accel_X;
     float accel_Y;
     float accel_Z;
     float gyro_X;
     float gyro_Y;
     float gyro_Z;
-    int8_t crc_GPS;
-    int8_t crc_Telemetry;
 
     uint16_t tempUnsigned;
     int16_t tempSigned;
@@ -117,26 +106,21 @@ void loop() {
     temperature /= 10.f;
     
     memcpy(&pressure, &buffer[14], sizeof(float));
-    memcpy(&TotalCount, &buffer[18], sizeof(uint16_t));
-    memcpy(&MuonCount, &buffer[20], sizeof(uint16_t));
-    memcpy(&accel_X, &buffer[22], sizeof(float));
-    memcpy(&accel_Y, &buffer[26], sizeof(float));
-    memcpy(&accel_Z, &buffer[30], sizeof(float));
+    memcpy(&TotalCount, &buffer[18], sizeof(uint32_t));
+    memcpy(&MuonCount, &buffer[22], sizeof(uint32_t));
+    memcpy(&accel_X, &buffer[26], sizeof(float));
+    memcpy(&accel_Y, &buffer[30], sizeof(float));
+    memcpy(&accel_Z, &buffer[34], sizeof(float));
 
-    memcpy(&tempSigned, &buffer[34], sizeof(int16_t));
+    memcpy(&tempSigned, &buffer[38], sizeof(int16_t));
     gyro_X = (float)tempSigned;
     gyro_X /= 10.f;
-    memcpy(&tempSigned, &buffer[36], sizeof(int16_t));
+    memcpy(&tempSigned, &buffer[40], sizeof(int16_t));
     gyro_Y = (float)tempSigned;
     gyro_Y /= 10.f;
-    memcpy(&tempSigned, &buffer[38], sizeof(int16_t));
+    memcpy(&tempSigned, &buffer[42], sizeof(int16_t));
     gyro_Z = (float)tempSigned;
     gyro_Z /= 10.f;
-
-
-    memcpy(&crc_GPS, &buffer[40], sizeof(int8_t));
-    memcpy(&crc_Telemetry, &buffer[41], sizeof(int8_t));
-
 
     Serial.print(frame);
     Serial.print(", ");
@@ -154,21 +138,19 @@ void loop() {
     Serial.print(", ");
     Serial.print(MuonCount); 
     Serial.print(", ");
-    Serial.print(accel_X); 
+    Serial.print(accel_X, 4); 
     Serial.print(", ");
-    Serial.print(accel_Y); 
+    Serial.print(accel_Y, 4); 
     Serial.print(", ");
-    Serial.print(accel_Z);
+    Serial.print(accel_Z, 4);
     Serial.print(", ");
     Serial.print(gyro_X); 
     Serial.print(", ");
     Serial.print(gyro_Y); 
     Serial.print(", ");
     Serial.print(gyro_Z);
-    Serial.print(", ");
-    Serial.print(crc_GPS); 
-    Serial.print(", ");
-    Serial.print(crc_Telemetry); 
+
+    crc_Caclulater();
 
     Serial.println();
   }
@@ -197,13 +179,13 @@ void crc_Caclulater()
 
   //Caclulating the CRC for the rest of the data
   pos = buffer;
-  end = pos + 28;
 
   crcData = CRC_TABLE[crcData ^ *pos];
   pos++;
   crcData = CRC_TABLE[crcData ^ *pos];
 
   pos = &buffer[12];
+  end = pos + 32;
 
   while (pos < end)
   {
@@ -211,8 +193,23 @@ void crc_Caclulater()
     pos++;
   }
 
-  if (crcGPS != buffer[40])
-    Serial.println("CRC GPS is wrong");
-  // if(crcData != buffer[41])
-  //   Serial.println("CRC Data is wrong");
+  Serial.print(", ");
+  if (crcGPS != buffer[44])
+  {
+    Serial.print(1);
+  }
+  else 
+  {
+    Serial.print(0);
+  }
+
+  Serial.print(", ");
+  if(crcData != buffer[45])
+  {
+    Serial.println(1);
+  }
+  else
+  {
+    Serial.println(0);
+  }
 }

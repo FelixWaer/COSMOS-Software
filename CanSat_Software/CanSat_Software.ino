@@ -34,8 +34,8 @@ uint8_t txBuffer[100];
 uint8_t GPSArray[100];
 int DataCounter = 0;
 uint16_t FrameCounter = 0;
-uint16_t MuonCount = 0;
-uint16_t TotalCount = 0;
+uint32_t MuonCount = 0;
+uint32_t TotalCount = 0;
 uint32_t TransmitTimer = 0;
 bool MessageReceived = false;
 
@@ -290,19 +290,19 @@ void prepare_TXBuffer(String data)
       }
 
       tempFloat = data.substring(index, endOfWord).toFloat();
-      memcpy(&txBuffer[22], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[26], &tempFloat, sizeof(float));
 
       index = endOfWord + 1;
 
       endOfWord = data.indexOf(":", index);
 
       tempFloat = data.substring(index, endOfWord).toFloat();
-      memcpy(&txBuffer[26], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[30], &tempFloat, sizeof(float));
 
       index = endOfWord + 1;
 
       tempFloat = data.substring(index, data.length()).toFloat();
-      memcpy(&txBuffer[30], &tempFloat, sizeof(float));
+      memcpy(&txBuffer[34], &tempFloat, sizeof(float));
       break;
 
     case 9:
@@ -316,18 +316,18 @@ void prepare_TXBuffer(String data)
       }
 
       tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
-      memcpy(&txBuffer[34], &tempInt, sizeof(int16_t));
+      memcpy(&txBuffer[38], &tempInt, sizeof(int16_t));
 
       index = endOfWord + 1;
 
       endOfWord = data.indexOf(":", index);
 
       tempInt = (int16_t)(data.substring(index, endOfWord).toFloat() * 10.f);
-      memcpy(&txBuffer[36], &tempInt, sizeof(int16_t));
+      memcpy(&txBuffer[40], &tempInt, sizeof(int16_t));
       index = endOfWord + 1;
 
       tempInt = (int16_t)(data.substring(index, data.length()).toFloat() * 10.f);
-      memcpy(&txBuffer[38], &tempInt, sizeof(int16_t));
+      memcpy(&txBuffer[42], &tempInt, sizeof(int16_t));
       break;
 
     default:
@@ -352,13 +352,12 @@ void crc_Calculater()
 
   //Caclulating the CRC for the rest of the data
   pos = txBuffer;
-  end = pos + 28;
-
   crcData = CRC_TABLE[crcData ^ *pos];
   pos++;
   crcData = CRC_TABLE[crcData ^ *pos];
 
   pos = &txBuffer[12];
+  end = pos + 32;
 
   while (pos < end)
   {
@@ -366,8 +365,8 @@ void crc_Calculater()
     pos++;
   }
 
-  txBuffer[40] = crcGPS;
-  txBuffer[41] = crcData;
+  txBuffer[44] = crcGPS;
+  txBuffer[45] = crcData;
 }
 
 void startup_Timer() 
@@ -414,12 +413,13 @@ void transmit_Data()
   memcpy(&txBuffer[6], &longitude, sizeof(float));
   memcpy(&txBuffer[10], &altitude, sizeof(uint16_t));
 
-  crc_Calculater();
   FrameCounter++;
   memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
-  memcpy(&txBuffer[18], &TotalCount, sizeof(uint16_t));
-  memcpy(&txBuffer[20], &MuonCount, sizeof(uint16_t));
+  memcpy(&txBuffer[18], &TotalCount, sizeof(uint32_t));
+  memcpy(&txBuffer[22], &MuonCount, sizeof(uint32_t));
 
-  rfm96.add((char*)txBuffer, 42);
+  crc_Calculater();
+
+  rfm96.add((char*)txBuffer, 46);
   rfm96.sendAndWriteToFile();
 }

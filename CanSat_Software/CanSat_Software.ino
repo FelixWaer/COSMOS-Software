@@ -27,7 +27,7 @@ USBSerialEmu userial(myusb);
 //=============================================================================
 // Other Objects
 //=============================================================================
-Cansat_RFM96 rfm96(433500, false);
+Cansat_RFM96 rfm96(433000, false);
 Adafruit_GPS GPS(&GPSSerial);
 
 uint8_t txBuffer[100];
@@ -246,7 +246,7 @@ void handle_CosmicWatchData()
 void prepare_TXBuffer(String data)
 {
   int endOfWord;
-  int index;
+  int index = 0;
   int16_t tempInt;
   float tempFloat;
 
@@ -259,7 +259,7 @@ void prepare_TXBuffer(String data)
       {
         MuonCount++;
       }
-      else 
+      else
       {
         TotalCount++;
       }
@@ -398,22 +398,37 @@ void transmit_Data()
 {
   float latitude = 0;
   float longitude = 0;
-  uint16_t altitude = 0;
+  float altitude = 0;
+  uint16_t altitude_int = 0;
 
   latitude = GPS.latitude;
   longitude = GPS.longitude;
-  altitude = (uint16_t)GPS.altitude;
+  altitude = GPS.altitude;
 
   if (GPS.fix)
   {
     //Serial.println("Has Fix!");
   }
 
-  memcpy(&txBuffer[2], &latitude, sizeof(float));
-  memcpy(&txBuffer[6], &longitude, sizeof(float));
-  memcpy(&txBuffer[10], &altitude, sizeof(uint16_t));
+  if (altitude < 0)
+  {
+      altitude_int = 0;
+  }
+  else if (altitude > 65535/2.0)
+  {
+    altitude_int = 65535;
+  }
+  else
+  {
+    altitude_int = (uint16_t)(2 * altitude);
+  }
 
   FrameCounter++;
+
+  memcpy(&txBuffer[2], &latitude, sizeof(float));
+  memcpy(&txBuffer[6], &longitude, sizeof(float));
+  memcpy(&txBuffer[10], &altitude_int, sizeof(uint16_t));
+
   memcpy(&txBuffer[0], &FrameCounter, sizeof(uint16_t));
   memcpy(&txBuffer[18], &TotalCount, sizeof(uint32_t));
   memcpy(&txBuffer[22], &MuonCount, sizeof(uint32_t));

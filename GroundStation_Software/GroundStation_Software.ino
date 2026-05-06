@@ -1,6 +1,6 @@
 #include <Cansat_RFM96.h>
 
-Cansat_RFM96 rfm96(433500, false);
+Cansat_RFM96 rfm96(433000, false);
 unsigned long time_counter=0;
 
 uint8_t buffer[46];
@@ -93,16 +93,16 @@ void loop() {
     float gyro_Y;
     float gyro_Z;
 
-    uint16_t tempUnsigned;
     int16_t tempSigned;
 
     memcpy(&frame, &buffer[0], sizeof(uint16_t));
     memcpy(&latitude, &buffer[2], sizeof(float));
     memcpy(&longitude, &buffer[6], sizeof(float));
     memcpy(&altitude, &buffer[10], sizeof(uint16_t));
+    altitude /= 2;
 
-    memcpy(&tempUnsigned, &buffer[12], sizeof(uint16_t));
-    temperature = (float)tempUnsigned;
+    memcpy(&tempSigned, &buffer[12], sizeof(int16_t));
+    temperature = (float)tempSigned;
     temperature /= 10.f;
     
     memcpy(&pressure, &buffer[14], sizeof(float));
@@ -152,7 +152,7 @@ void loop() {
 
     crc_Caclulater();
 
-    Serial.println();
+    Serial.print("\n");
   }
 
   if (millis()-time_counter > 5000) 
@@ -206,10 +206,10 @@ void crc_Caclulater()
   Serial.print(", ");
   if(crcData != buffer[45])
   {
-    Serial.println(1);
+    Serial.print(1);
   }
   else
   {
-    Serial.println(0);
+    Serial.print(0);
   }
 }
